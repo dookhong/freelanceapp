@@ -1,8 +1,13 @@
-import 'dart:ffi';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_blue/flutter_blue.dart';
 import 'package:freelanceapp/bill.dart';
+import 'package:freelanceapp/blue_print.dart';
 import 'package:freelanceapp/store.dart';
+import 'package:esc_pos_utils/esc_pos_utils.dart';
+import 'package:permission_handler/permission_handler.dart'
+    as permissionHandler;
+
+FlutterBlue flutterBlue = FlutterBlue.instance;
 
 void main() {
   runApp(const MyApp());
@@ -53,6 +58,9 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
+
+  String tempVar = '';
+  List<ScanResult>? scanResult;
 
   void _incrementCounter() {
     setState(() {
@@ -111,15 +119,74 @@ class _MyHomePageState extends State<MyHomePage> {
           // center the children vertically; the main axis here is the vertical
           // axis because Columns are vertical (the cross axis would be
           // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
+          // mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              height: 10,
+            ),
             const Text(
               'Press the button to print the bill',
             ),
             ElevatedButton(
-              child: Text("Print"),
-              onPressed: () {},
+              child: Text("Search Devices"),
+              onPressed: () {
+                findDevices();
+              },
             ),
+            scanResult == null
+                ? Center(
+                    child: Column(
+                      children: [
+                        Text('No device avaialble!'),
+                        Text(tempVar),
+                      ],
+                    ),
+                  )
+                : scanResult!.isEmpty
+                    ? Center(
+                        child: Column(
+                          children: [
+                            Text('No device avaialble!'),
+                            Text(tempVar),
+                          ],
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          // Text(),
+                          Center(child: Text('Select device')),
+                          Container(
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemBuilder: (context, index) {
+                                return ListTile(
+                                  title: Text(
+                                    scanResult![index].device.name,
+                                    style: const TextStyle(color: Colors.black),
+                                  ),
+                                  trailing: MaterialButton(
+                                    onPressed: () {
+                                      printWithDevice(
+                                          scanResult![index].device);
+                                    },
+                                    color: Colors.blue,
+                                    textColor: Colors.white,
+                                    child: Text('Print'),
+                                  ),
+                                  subtitle:
+                                      Text(scanResult![index].device.id.id),
+                                  // onTap: () {
+                                  //   printWithDevice(scanResult![index].device);
+                                  // },
+                                );
+                              },
+                              separatorBuilder: (context, index) =>
+                                  const Divider(),
+                              itemCount: scanResult?.length ?? 0,
+                            ),
+                          ),
+                        ],
+                      ),
           ],
         ),
       ),
@@ -130,4 +197,124 @@ class _MyHomePageState extends State<MyHomePage> {
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
+
+  Future<void> findDevices() async {
+    if (!await flutterBlue.isOn) {
+      showDialog(
+          context: context,
+          builder: (context) {
+            return const AlertDialog(
+              content: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('Enable bluetooth to continue'),
+              ),
+              // child: Column(
+              //   mainAxisSize: MainAxisSize.min,
+              //   children: const [
+              //     Padding(
+              //       padding: EdgeInsets.all(20),
+              //       child: Text('Enable bluetooth to continue'),
+              //     ),
+              //   ],
+              // ),
+            );
+          });
+
+      return;
+    }
+
+    var statusL = await permissionHandler.Permission.location.request();
+
+    if (statusL.isGranted) {
+      var statusS = await permissionHandler.Permission.bluetoothScan.request();
+
+      if (statusS.isGranted) {
+        var statusC =
+            await permissionHandler.Permission.bluetoothConnect.request();
+
+        if (statusC.isGranted) {
+          // showBluetoothListDialog();
+
+          flutterBlue.startScan(timeout: const Duration(seconds: 4));
+
+          flutterBlue.scanResults.listen((results) {
+            setState(() {
+              scanResult = results;
+            });
+          });
+          flutterBlue.stopScan();
+
+          await Future.delayed(Duration(seconds: 10));
+
+          tempVar = 'aaaaa';
+
+          setState(() {});
+
+          print('hi000000000000');
+        }
+      }
+    }
+  }
+
+  void printWithDevice(BluetoothDevice device) async {
+    await device.connect();
+
+    final gen = Generator(PaperSize.mm58, await CapabilityProfile.load());
+    final printer = BluePrint();
+    printer.add(gen.qrcode('https://google.com'));
+    printer.add(gen.text('Hello'));
+    printer.add(gen.text('World', styles: const PosStyles(bold: true)));
+    printer.add(gen.feed(1));
+    await printer.printData(device);
+    device.disconnect();
+  }
+
+  // showBluetoothListDialog() {
+  //   showDialog(
+  //       context: context,
+  //       builder: (context) {
+  //         return StatefulBuilder(builder: (context, setState) {
+  //           return AlertDialog(
+  //             content: SizedBox(
+  //               height: 300,
+  //               child: Padding(
+  //                 padding: const EdgeInsets.all(20),
+  //                 child: scanResult!.isEmpty
+  //                     ? Center(
+  //                         child: Column(
+  //                           children: [
+  //                             Text('No device avaialble!'),
+  //                             Text(tempVar),
+  //                           ],
+  //                         ),
+  //                       )
+  //                     : Column(
+  //                         children: [
+  //                           Center(child: Text('Select device')),
+  //                           ListView.separated(
+  //                             itemBuilder: (context, index) {
+  //                               return ListTile(
+  //                                 title: Text(
+  //                                   scanResult![index].device.name,
+  //                                   style: const TextStyle(color: Colors.black),
+  //                                 ),
+  //                                 subtitle:
+  //                                     Text(scanResult![index].device.id.id),
+  //                                 onTap: () {
+  //                                   printWithDevice(scanResult![index].device);
+  //                                 },
+  //                               );
+  //                             },
+  //                             separatorBuilder: (context, index) =>
+  //                                 const Divider(),
+  //                             itemCount: scanResult?.length ?? 0,
+  //                           ),
+  //                         ],
+  //                       ),
+  //               ),
+  //             ),
+  //           );
+  //         });
+  //       });
+  // }
 }
